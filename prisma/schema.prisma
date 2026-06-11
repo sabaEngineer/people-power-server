@@ -1,0 +1,99 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  name      String?
+  avatar    String?
+  googleId  String    @unique
+  timeZone  String    @default("UTC")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  contacts  Contact[]
+  tags      Tag[]
+}
+
+model Contact {
+  id        String               @id @default(cuid())
+  userId    String
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName String
+  lastName  String
+  birthday     DateTime?            @db.Date
+  phone       String?
+  socialUrl   String?
+  description String?
+  facts     Fact[]
+  tags      ContactTag[]
+  birthdayReminderLogs BirthdayReminderLog[]
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  @@index([userId])
+}
+
+enum FactType {
+  PAIN
+  GOAL
+  LIKE
+}
+
+model Fact {
+  id           String    @id @default(cuid())
+  contactId    String
+  contact      Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  type         FactType
+  content      String
+  reminderDate DateTime? @db.Date
+  reminderSent Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([contactId])
+  @@index([reminderDate, reminderSent])
+}
+
+model Tag {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  contacts  ContactTag[]
+  createdAt DateTime     @default(now())
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model ContactTag {
+  contactId String
+  tagId     String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, tagId])
+}
+
+enum BirthdayReminderType {
+  ONE_WEEK_BEFORE
+  ON_DAY
+}
+
+model BirthdayReminderLog {
+  id        String               @id @default(cuid())
+  contactId String
+  contact   Contact              @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  type      BirthdayReminderType
+  year      Int
+  sentAt    DateTime             @default(now())
+
+  @@unique([contactId, type, year])
+  @@index([contactId])
+}
