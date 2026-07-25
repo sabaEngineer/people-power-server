@@ -3,17 +3,31 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { BirthdayReminderType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
 import { CreateFactDto } from './dto/create-fact.dto';
 import { UpdateFactDto } from './dto/update-fact.dto';
 
+const DEFAULT_BIRTHDAY_REMINDERS: BirthdayReminderType[] = [
+  BirthdayReminderType.ON_DAY,
+  BirthdayReminderType.ONE_WEEK_BEFORE,
+];
+
 const contactInclude = {
   facts: { orderBy: { createdAt: 'asc' as const } },
   tags: { include: { tag: true } },
 } satisfies Prisma.ContactInclude;
+
+function resolveBirthdayReminders(
+  birthday: string | null | undefined,
+  reminders: BirthdayReminderType[] | undefined,
+): BirthdayReminderType[] {
+  if (!birthday) return [];
+  if (reminders !== undefined) return reminders;
+  return DEFAULT_BIRTHDAY_REMINDERS;
+}
 
 @Injectable()
 export class ContactsService {
@@ -66,12 +80,17 @@ export class ContactsService {
   }
 
   async create(userId: string, dto: CreateContactDto) {
+    const birthday = dto.birthday ? new Date(dto.birthday) : null;
     const contact = await this.prisma.contact.create({
       data: {
         userId,
         firstName: dto.firstName,
         lastName: dto.lastName,
-        birthday: dto.birthday ? new Date(dto.birthday) : null,
+        birthday,
+        birthdayReminders: resolveBirthdayReminders(
+          dto.birthday,
+          dto.birthdayReminders,
+        ),
         phone: dto.phone ?? null,
         socialUrl: dto.socialUrl?.trim() || null,
         description: dto.description?.trim() || null,
@@ -96,6 +115,21 @@ export class ContactsService {
       }
     }
 
+    const birthdayCleared = dto.birthday !== undefined && !dto.birthday;
+    const birthdaySet = dto.birthday !== undefined && !!dto.birthday;
+
+    let birthdayReminders: BirthdayReminderType[] | undefined;
+    if (birthdayCleared) {
+      birthdayReminders = [];
+    } else if (dto.birthdayReminders !== undefined) {
+      birthdayReminders = dto.birthdayReminders;
+    } else if (birthdaySet) {
+      const existing = await this.prisma.contact.findUnique({ where: { id } });
+      if (existing && !existing.birthday) {
+        birthdayReminders = DEFAULT_BIRTHDAY_REMINDERS;
+      }
+    }
+
     const contact = await this.prisma.contact.update({
       where: { id },
       data: {
@@ -104,6 +138,7 @@ export class ContactsService {
         ...(dto.birthday !== undefined && {
           birthday: dto.birthday ? new Date(dto.birthday) : null,
         }),
+        ...(birthdayReminders !== undefined && { birthdayReminders }),
         ...(dto.phone !== undefined && { phone: dto.phone ?? null }),
         ...(dto.socialUrl !== undefined && {
           socialUrl: dto.socialUrl?.trim() || null,
@@ -124,13 +159,16 @@ export class ContactsService {
 
   async addFact(userId: string, contactId: string, dto: CreateFactDto) {
     await this.ensureOwned(userId, contactId);
+    const reminderDate = dto.reminderDate ? new Date(dto.reminderDate) : null;
     return this.prisma.fact.create({
       data: {
         contactId,
         type: dto.type,
         content: dto.content,
-        reminderDate: dto.reminderDate ? new Date(dto.reminderDate) : null,
-        reminderSent: false,
+        reminderDate,
+        reminderTimings: reminderDate
+          ? dto.reminderTimings ?? [BirthdayReminderType.ON_DAY]
+          : [],
       },
     });
   }
@@ -149,7 +187,27 @@ export class ContactsService {
 
     const reminderDateChanged =
       dto.reminderDate !== undefined &&
-      (dto.reminderDate ?? null) !== (fact.reminderDate?.toISOString().slice(0, 10) ?? null);
+      (dto.reminderDate ?? null) !==
+        (fact.reminderDate?.toISOString().slice(0, 10) ?? null);
+
+    const reminderCleared =
+      dto.reminderDate !== undefined && !dto.reminderDate;
+
+    let reminderTimings: BirthdayReminderType[] | undefined;
+    if (reminderCleared) {
+      reminderTimings = [];
+    } else if (dto.reminderTimings !== undefined) {
+      reminderTimings = dto.reminderTimings;
+    } else if (reminderDateChanged && dto.reminderDate) {
+      reminderTimings =
+        fact.reminderTimings.length > 0
+          ? fact.reminderTimings
+          : [BirthdayReminderType.ON_DAY];
+    }
+
+    if (reminderDateChanged) {
+      await this.prisma.factReminderLog.deleteMany({ where: { factId } });
+    }
 
     return this.prisma.fact.update({
       where: { id: factId },
@@ -158,8 +216,8 @@ export class ContactsService {
         ...(dto.content !== undefined && { content: dto.content }),
         ...(dto.reminderDate !== undefined && {
           reminderDate: dto.reminderDate ? new Date(dto.reminderDate) : null,
-          ...(reminderDateChanged && { reminderSent: false }),
         }),
+        ...(reminderTimings !== undefined && { reminderTimings }),
       },
     });
   }

@@ -1,10 +1,13 @@
 import {
   IsArray,
   IsDateString,
+  IsEnum,
   IsOptional,
   IsString,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
+import { BirthdayReminderType } from '@prisma/client';
 
 export class CreateContactDto {
   @IsString()
@@ -16,8 +19,14 @@ export class CreateContactDto {
   lastName: string;
 
   @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== '')
   @IsDateString()
-  birthday?: string;
+  birthday?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsEnum(BirthdayReminderType, { each: true })
+  birthdayReminders?: BirthdayReminderType[];
 
   @IsOptional()
   @IsString()

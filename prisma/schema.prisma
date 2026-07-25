@@ -21,20 +21,21 @@ model User {
 }
 
 model Contact {
-  id        String               @id @default(cuid())
-  userId    String
-  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  firstName String
-  lastName  String
-  birthday     DateTime?            @db.Date
-  phone       String?
-  socialUrl   String?
-  description String?
-  facts     Fact[]
-  tags      ContactTag[]
+  id                String                 @id @default(cuid())
+  userId            String
+  user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName         String
+  lastName          String
+  birthday          DateTime?              @db.Date
+  birthdayReminders BirthdayReminderType[] @default([])
+  phone             String?
+  socialUrl         String?
+  description       String?
+  facts             Fact[]
+  tags              ContactTag[]
   birthdayReminderLogs BirthdayReminderLog[]
-  createdAt DateTime             @default(now())
-  updatedAt DateTime             @updatedAt
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
 
   @@index([userId])
 }
@@ -46,18 +47,30 @@ enum FactType {
 }
 
 model Fact {
-  id           String    @id @default(cuid())
-  contactId    String
-  contact      Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  type         FactType
-  content      String
-  reminderDate DateTime? @db.Date
-  reminderSent Boolean   @default(false)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id              String                 @id @default(cuid())
+  contactId       String
+  contact         Contact                @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  type            FactType
+  content         String
+  reminderDate    DateTime?              @db.Date
+  reminderTimings BirthdayReminderType[] @default([])
+  reminderLogs    FactReminderLog[]
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
 
   @@index([contactId])
-  @@index([reminderDate, reminderSent])
+  @@index([reminderDate])
+}
+
+model FactReminderLog {
+  id     String               @id @default(cuid())
+  factId String
+  fact   Fact                 @relation(fields: [factId], references: [id], onDelete: Cascade)
+  type   BirthdayReminderType
+  sentAt DateTime             @default(now())
+
+  @@unique([factId, type])
+  @@index([factId])
 }
 
 model Tag {
@@ -82,8 +95,10 @@ model ContactTag {
 }
 
 enum BirthdayReminderType {
-  ONE_WEEK_BEFORE
   ON_DAY
+  DAY_BEFORE
+  ONE_WEEK_BEFORE
+  ONE_MONTH_BEFORE
 }
 
 model BirthdayReminderLog {

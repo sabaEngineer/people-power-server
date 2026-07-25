@@ -1,5 +1,13 @@
-import { FactType } from '@prisma/client';
-import { IsDateString, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { FactType, BirthdayReminderType } from '@prisma/client';
+import {
+  IsArray,
+  IsDateString,
+  IsEnum,
+  IsOptional,
+  IsString,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
 
 export class CreateFactDto {
   @IsEnum(FactType)
@@ -10,6 +18,12 @@ export class CreateFactDto {
   content: string;
 
   @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== '')
   @IsDateString()
-  reminderDate?: string;
+  reminderDate?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsEnum(BirthdayReminderType, { each: true })
+  reminderTimings?: BirthdayReminderType[];
 }
