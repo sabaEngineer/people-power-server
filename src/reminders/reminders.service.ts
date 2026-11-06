@@ -131,7 +131,7 @@ export class RemindersService {
         data: { factId: fact.id, type: timing },
       });
     }
-    return sent;
+    return Boolean(sent);
   }
 
   private async sendBirthdayReminders(today: Date) {
