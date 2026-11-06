@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
-import { EmailService } from '../email/email.service';
+import { TelegramService } from '../telegram/telegram.service';
 
 interface GoogleUser {
   googleId: string;
@@ -15,7 +15,7 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
-    private email: EmailService,
+    private telegram: TelegramService,
   ) {}
 
   async validateGoogleUser(googleUser: GoogleUser) {
@@ -40,10 +40,9 @@ export class AuthService {
     });
 
     if (isNew) {
-      void this.email.send(
-        user.email,
-        'Welcome to People Power',
-        welcomeEmailHtml(user.name ?? 'there'),
+      const name = user.name ?? 'there';
+      void this.telegram.send(
+        `Welcome to People Power\n\nHey ${name},\nYour personal relationship CRM is ready. Start adding the people you meet and never forget what matters about them.`,
       );
     }
 
@@ -57,17 +56,4 @@ export class AuthService {
       name: user.name ?? undefined,
     });
   }
-}
-
-function welcomeEmailHtml(name: string): string {
-  return `
-    <div style="font-family: system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 40px 24px; color: #1a1a2e;">
-      <h1 style="font-size: 22px; font-weight: 600; margin-bottom: 24px;">Welcome to People Power</h1>
-      <p style="font-size: 16px; line-height: 1.6;">Hey ${name},</p>
-      <p style="font-size: 16px; line-height: 1.6;">
-        Your personal relationship CRM is ready. Start adding the people you meet and never forget what matters about them.
-      </p>
-      <p style="font-size: 14px; color: #6b7280; margin-top: 32px;">— People Power</p>
-    </div>
-  `;
 }

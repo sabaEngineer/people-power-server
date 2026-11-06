@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BirthdayReminderType, FactType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { EmailService } from '../email/email.service';
+import { TelegramService } from '../telegram/telegram.service';
 
 const FACT_TYPE_LABELS: Record<FactType, string> = {
   PAIN: 'Pain / Problem',
@@ -44,7 +44,7 @@ export class RemindersService {
 
   constructor(
     private prisma: PrismaService,
-    private email: EmailService,
+    private telegram: TelegramService,
   ) {}
 
   /** Daily tick: send fact reminders and birthday reminders. */
@@ -90,7 +90,7 @@ export class RemindersService {
         if (sentTypes.has(type)) continue;
         if (!sameUtcDay(today, date)) continue;
 
-        const sent = await this.sendFactEmail(fact, type, target);
+        const sent = await this.sendFactReminder(fact, type, target);
         if (sent) sentCount += 1;
       }
     }
@@ -100,7 +100,7 @@ export class RemindersService {
     }
   }
 
-  private async sendFactEmail(
+  private async sendFactReminder(
     fact: {
       id: string;
       type: FactType;
@@ -108,7 +108,6 @@ export class RemindersService {
       contact: {
         firstName: string;
         lastName: string;
-        user: { email: string };
       };
     },
     timing: BirthdayReminderType,
@@ -118,18 +117,15 @@ export class RemindersService {
     const label = FACT_TYPE_LABELS[fact.type];
     const when = FACT_TIMING_LABELS[timing];
     const formatted = formatDate(reminderDate);
-    const subject = `Reminder: ${contact.firstName} ${contact.lastName}`;
-    const html = `
-      <div style="font-family: system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #1a1a2e;">
-        <h2 style="font-size: 18px; margin-bottom: 16px;">Reminder about ${contact.firstName} ${contact.lastName}</h2>
-        <p style="font-size: 14px; color: #6b7280; margin-bottom: 4px;">${label} · ${when}</p>
-        <p style="font-size: 13px; color: #9ca3af; margin-bottom: 12px;">Target date: ${formatted}</p>
-        <p style="font-size: 16px; line-height: 1.6;">${escapeHtml(fact.content)}</p>
-        <p style="font-size: 14px; color: #6b7280; margin-top: 32px;">— People Power</p>
-      </div>
-    `;
+    const text = [
+      `Reminder about ${contact.firstName} ${contact.lastName}`,
+      `${label} · ${when}`,
+      `Target date: ${formatted}`,
+      '',
+      fact.content,
+    ].join('\n');
 
-    const sent = await this.email.send(contact.user.email, subject, html);
+    const sent = await this.telegram.send(text);
     if (sent) {
       await this.prisma.factReminderLog.create({
         data: { factId: fact.id, type: timing },
@@ -178,17 +174,16 @@ export class RemindersService {
         if (sentTypes.has(type)) continue;
         if (!sameUtcDay(today, date)) continue;
 
-        await this.sendBirthdayEmail(contact, type, birthdayThisYear, year);
+        await this.sendBirthdayReminder(contact, type, birthdayThisYear, year);
       }
     }
   }
 
-  private async sendBirthdayEmail(
+  private async sendBirthdayReminder(
     contact: {
       id: string;
       firstName: string;
       lastName: string;
-      user: { email: string };
     },
     type: BirthdayReminderType,
     birthdayDate: Date,
@@ -197,18 +192,9 @@ export class RemindersService {
     const formatted = formatDate(birthdayDate);
     const full = `${contact.firstName} ${contact.lastName}`;
     const copy = REMINDER_COPY[type];
-    const subject = copy.subject(contact.firstName);
-    const body = copy.body(full, formatted);
+    const text = `${copy.subject(contact.firstName)}\n\n${copy.body(full, formatted)}`;
 
-    const html = `
-      <div style="font-family: system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #1a1a2e;">
-        <h2 style="font-size: 18px; margin-bottom: 16px;">${subject}</h2>
-        <p style="font-size: 16px; line-height: 1.6;">${body}</p>
-        <p style="font-size: 14px; color: #6b7280; margin-top: 32px;">— People Power</p>
-      </div>
-    `;
-
-    const sent = await this.email.send(contact.user.email, subject, html);
+    const sent = await this.telegram.send(text);
     if (sent) {
       await this.prisma.birthdayReminderLog.create({
         data: { contactId: contact.id, type, year },
@@ -271,12 +257,4 @@ function formatDate(d: Date): string {
     day: 'numeric',
     timeZone: 'UTC',
   });
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
